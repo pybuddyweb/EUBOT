@@ -7,17 +7,6 @@ const {
   Partials
 } = require('discord.js');
 
-const {
-  joinVoiceChannel,
-  createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus,
-  NoSubscriberBehavior,
-  getVoiceConnection
-} = require('@discordjs/voice');
-
-const playdl = require('play-dl');
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -84,83 +73,25 @@ client.on('guildMemberRemove', async (member) => {
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot) return;
 
-  // Forward command
   const content = msg.content.trim();
-  if (content.startsWith('!EU') && !content.startsWith('!EUplay')) {
-    const text = content.slice(3).trim();
-    const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/.+/i;
 
-    if (ytRegex.test(text) || !text.includes('http')) {
-      await msg.channel.send({
-        content: `📢 ${msg.author.tag}: ${text}`,
-        allowedMentions: { parse: ['users', 'roles', 'everyone'] }
-      });
-    } else {
-      await msg.channel.send(`❌ Only YouTube links or plain text allowed.`);
-    }
+  // Forward command - allow in all channels
+  if (content.startsWith('!EU')) {
+    const text = content.slice(3).trim();
+    await msg.channel.send({
+      content: `📢 ${msg.author.tag}: ${text}`,
+      allowedMentions: { parse: ['users', 'roles', 'everyone'] }
+    });
     await msg.delete().catch(() => {});
   }
 
-  // Link blocker
+  // Block all links except YouTube in specific channel
   const linkRegex = /(http:\/\/|https:\/\/|discord\.gg\/)/i;
   const ytOk = /youtube\.com|youtu\.be/i;
-  if (linkRegex.test(content) && !ytOk.test(content) && !content.startsWith('!EU')) {
+  if (linkRegex.test(content) && (!ytOk.test(content) || msg.channel.id !== '1329764758303281173')) {
     await msg.delete().catch(() => {});
     const log = await client.channels.fetch(logChannels.botActivity);
     log?.send(`🚫 Blocked suspicious link from ${msg.author.tag}: \`${content}\``);
-  }
-
-  // MUSIC: !play <song>
-  if (msg.content.startsWith('!play')) {
-    const query = msg.content.slice(5).trim();
-    if (!query) return msg.reply('❌ Please provide a song name or link.');
-
-    const vc = msg.member.voice.channel;
-    if (!vc) return msg.reply('❌ Join a voice channel first.');
-
-    try {
-      const result = await playdl.search(query, { limit: 1 });
-      const video = result[0];
-      const stream = await playdl.stream(video.url);
-
-      const resource = createAudioResource(stream.stream, { inputType: stream.type });
-      const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
-      player.play(resource);
-
-      const connection = joinVoiceChannel({
-        channelId: vc.id,
-        guildId: vc.guild.id,
-        adapterCreator: vc.guild.voiceAdapterCreator
-      });
-
-      connection.subscribe(player);
-      msg.channel.send(`🎶 Now Playing: **${video.title}**`);
-
-      player.on(AudioPlayerStatus.Idle, () => {
-        connection.destroy();
-      });
-    } catch (err) {
-      console.error(err);
-      msg.reply('❌ Failed to play song.');
-    }
-  }
-
-  // MUSIC: !pause
-  if (msg.content === '!pause') {
-    const connection = getVoiceConnection(msg.guild.id);
-    if (!connection) return msg.reply('❌ Not connected to any VC.');
-    const player = connection.state.subscription?.player;
-    player?.pause();
-    msg.channel.send('⏸️ Paused.');
-  }
-
-  // MUSIC: !resume
-  if (msg.content === '!resume') {
-    const connection = getVoiceConnection(msg.guild.id);
-    if (!connection) return msg.reply('❌ Not connected to any VC.');
-    const player = connection.state.subscription?.player;
-    player?.unpause();
-    msg.channel.send('▶️ Resumed.');
   }
 });
 
