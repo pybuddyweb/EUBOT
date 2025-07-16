@@ -4,8 +4,7 @@ const {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
-  Partials,
-  PermissionsBitField
+  Partials
 } = require('discord.js');
 
 const client = new Client({
@@ -19,6 +18,7 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
+// Channel IDs
 const logChannels = {
   vcJoin: '1394620942298386442',
   vcDrag: '1394620786601365534',
@@ -35,92 +35,86 @@ client.once('ready', () => {
   console.log(`✅ EUplay Bot Logged in as ${client.user.tag}`);
 });
 
+// Welcome Message
 client.on('guildMemberAdd', async (member) => {
   const channel = await member.guild.channels.fetch(logChannels.welcome);
-  if (channel) {
-    const embed = new EmbedBuilder()
-      .setColor(0x00FF00)
-      .setTitle('🎫 Gang Boarding Pass')
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        { name: '👤 Rowdy Name', value: `<@${member.id}>`, inline: true },
-        { name: '🏢 Destination', value: `${member.guild.name}`, inline: true },
-        { name: '💲 Role', value: 'Future Don?', inline: true },
-        { name: '⏰ Time', value: `${new Date().toLocaleString()}`, inline: false }
-      )
-      .setDescription(`🔫 Welcome to the turf, blood & respect earn pananum.`)
-      .setImage('https://media.discordapp.net/attachments/1391440312320131194/1394614683692040322/standard_3.gif')
-      .setFooter({ text: 'Enuyirgal - Respect or Regret' });
+  if (!channel) return;
 
-    channel.send({ content: `🔥 A new rowdy has arrived!`, embeds: [embed] });
-  }
+  const embed = new EmbedBuilder()
+    .setColor(0x00FF00)
+    .setTitle('🎫 Gang Boarding Pass')
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .addFields(
+      { name: '👤 Rowdy Name', value: `<@${member.id}>`, inline: true },
+      { name: '🏢 Destination', value: `${member.guild.name}`, inline: true },
+      { name: '💲 Role', value: 'Future Don?', inline: true },
+      { name: '⏰ Time', value: `${new Date().toLocaleString()}`, inline: false }
+    )
+    .setDescription(`🔫 Welcome to the turf, blood & respect earn pananum.`)
+    .setImage('https://media.discordapp.net/attachments/1391440312320131194/1394614683692040322/standard_3.gif')
+    .setFooter({ text: 'Enuyirgal - Respect or Regret' });
+
+  channel.send({ content: `🔥 A new rowdy has arrived!`, embeds: [embed] });
 });
 
+// Leave Message
 client.on('guildMemberRemove', async (member) => {
   const channel = await member.guild.channels.fetch(logChannels.bye);
-  if (channel) {
-    const embed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setTitle('👋 Rowdy Left the Turf')
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setDescription(`💀 **${member.user.tag}** left the server... thug life isn’t for everyone.`)
-      .setImage('https://media.discordapp.net/attachments/1391440312320131194/1394614683692040322/standard_3.gif')
-      .setFooter({ text: 'Enuyirgal - Gang Rules' });
+  if (!channel) return;
 
-    channel.send({ content: `💨 A rowdy has escaped...`, embeds: [embed] });
-  }
+  const embed = new EmbedBuilder()
+    .setColor(0xFF0000)
+    .setTitle('👋 Rowdy Left the Turf')
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .setDescription(`💀 **${member.user.tag}** left the server... thug life isn’t for everyone.`)
+    .setImage('https://media.discordapp.net/attachments/1391440312320131194/1394614683692040322/standard_3.gif')
+    .setFooter({ text: 'Enuyirgal - Gang Rules' });
+
+  channel.send({ content: `💨 A rowdy has escaped...`, embeds: [embed] });
 });
 
+// Forward Command (!EU) - no embed, only YouTube or text
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot) return;
+  const content = msg.content.trim();
 
-  // Forward message with !EU prefix (excluding !EUplay)
-  if (msg.content.startsWith('!EU') && !msg.content.startsWith('!EUplay')) {
-    const content = msg.content.slice(3).trim();
-    if (!content) return;
+  if (content.startsWith('!EU') && !content.startsWith('!EUplay')) {
+    const text = content.slice(3).trim();
+    if (!text) return;
 
-    const embed = new EmbedBuilder()
-      .setColor(0x3498DB)
-      .setTitle('📢 Public Announcement')
-      .setDescription(content)
-      .setFooter({ text: `By ${msg.author.tag}` })
-      .setTimestamp();
+    const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/.+/i;
 
-    await msg.channel.send({ embeds: [embed], allowedMentions: { parse: ['users', 'roles', 'everyone'] } });
+    if (ytRegex.test(text) || !text.includes('http')) {
+      // ✅ Safe: YouTube link or no link
+      await msg.channel.send({
+        content: `📢 ${msg.author.tag}: ${text}`,
+        allowedMentions: { parse: ['users', 'roles', 'everyone'] }
+      });
+    } else {
+      await msg.channel.send(`❌ Only YouTube links or plain text allowed.`);
+    }
+
     await msg.delete().catch(() => {});
   }
 
-  // Check for suspicious links
-  const raw = msg.content;
-  const linkRegex = /(discord\.gg\/|http:\/\/|https:\/\/)/i;
-  const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/.+/i;
-  const spotifyRegex = /(?:https?:\/\/)?(?:open\.)?spotify\.com\/.+/i;
-
-  const isSafe = ytRegex.test(raw) || spotifyRegex.test(raw);
-  if (linkRegex.test(raw) && !isSafe && !msg.content.startsWith('!EU')) {
+  // ❌ Block all other unknown links
+  const linkRegex = /(http:\/\/|https:\/\/|discord\.gg\/)/i;
+  const ytOk = /youtube\.com|youtu\.be/i;
+  if (linkRegex.test(content) && !ytOk.test(content) && !content.startsWith('!EU')) {
     await msg.delete().catch(() => {});
     const log = await client.channels.fetch(logChannels.botActivity);
-    log?.send(`🚫 Blocked suspicious link from ${msg.author.tag}: \`${raw}\``);
+    log?.send(`🚫 Blocked suspicious link from ${msg.author.tag}: \`${content}\``);
   }
 });
 
+// Deleted Message Logger
 client.on('messageDelete', async (message) => {
   if (message.partial || message.author?.bot) return;
   const log = await client.channels.fetch(logChannels.deletedMsg);
-  if (log) {
-    log.send(`🗑️ Message deleted from <@${message.author.id}> in <#${message.channel.id}>: ${message.content}`);
-  }
+  log?.send(`🗑️ Message deleted from <@${message.author.id}> in <#${message.channel.id}>: ${message.content}`);
 });
 
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-  const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
-  const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
-  const log = await client.channels.fetch(logChannels.role);
-
-  addedRoles.forEach(role => log?.send(`✅ <@${newMember.id}> was **given** role: \`${role.name}\``));
-  removedRoles.forEach(role => log?.send(`❌ <@${newMember.id}> was **removed** role: \`${role.name}\``));
-});
-
+// VC Join / Leave / Drag Logs
 client.on('voiceStateUpdate', (oldState, newState) => {
   const user = newState.member?.user || oldState.member?.user;
   if (!user) return;
@@ -130,8 +124,20 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   } else if (oldState.channelId && !newState.channelId) {
     client.channels.fetch(logChannels.vcLeave).then(c => c?.send(`📤 ${user.tag} left VC.`)).catch(() => {});
   } else if (oldState.channelId !== newState.channelId) {
-    client.channels.fetch(logChannels.vcDrag).then(c => c?.send(`➡️ ${user.tag} moved from <#${oldState.channelId}> to <#${newState.channelId}>.`)).catch(() => {});
+    client.channels.fetch(logChannels.vcDrag).then(c =>
+      c?.send(`➡️ ${user.tag} moved from <#${oldState.channelId}> to <#${newState.channelId}>.`)
+    ).catch(() => {});
   }
 });
 
+// Role Add/Remove Logs
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  const added = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+  const removed = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
+  const log = await client.channels.fetch(logChannels.role);
+  added.forEach(role => log?.send(`✅ <@${newMember.id}> was **given** role: \`${role.name}\``));
+  removed.forEach(role => log?.send(`❌ <@${newMember.id}> was **removed** role: \`${role.name}\``));
+});
+
+// Login
 client.login(process.env.TOKEN);
