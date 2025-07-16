@@ -7,6 +7,17 @@ const {
   Partials
 } = require('discord.js');
 
+const {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  NoSubscriberBehavior,
+  getVoiceConnection
+} = require('@discordjs/voice');
+
+const playdl = require('play-dl');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -18,7 +29,6 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// Channel IDs
 const logChannels = {
   vcJoin: '1394620942298386442',
   vcDrag: '1394620786601365534',
@@ -35,7 +45,6 @@ client.once('ready', () => {
   console.log(`✅ EUplay Bot Logged in as ${client.user.tag}`);
 });
 
-// Welcome Message
 client.on('guildMemberAdd', async (member) => {
   const channel = await member.guild.channels.fetch(logChannels.welcome);
   if (!channel) return;
@@ -57,7 +66,6 @@ client.on('guildMemberAdd', async (member) => {
   channel.send({ content: `🔥 A new rowdy has arrived!`, embeds: [embed] });
 });
 
-// Leave Message
 client.on('guildMemberRemove', async (member) => {
   const channel = await member.guild.channels.fetch(logChannels.bye);
   if (!channel) return;
@@ -73,19 +81,16 @@ client.on('guildMemberRemove', async (member) => {
   channel.send({ content: `💨 A rowdy has escaped...`, embeds: [embed] });
 });
 
-// Forward Command (!EU) - no embed, only YouTube or text
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot) return;
-  const content = msg.content.trim();
 
+  // Forward command
+  const content = msg.content.trim();
   if (content.startsWith('!EU') && !content.startsWith('!EUplay')) {
     const text = content.slice(3).trim();
-    if (!text) return;
-
     const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/.+/i;
 
     if (ytRegex.test(text) || !text.includes('http')) {
-      // ✅ Safe: YouTube link or no link
       await msg.channel.send({
         content: `📢 ${msg.author.tag}: ${text}`,
         allowedMentions: { parse: ['users', 'roles', 'everyone'] }
@@ -93,11 +98,10 @@ client.on('messageCreate', async (msg) => {
     } else {
       await msg.channel.send(`❌ Only YouTube links or plain text allowed.`);
     }
-
     await msg.delete().catch(() => {});
   }
 
-  // ❌ Block all other unknown links
+  // Link blocker
   const linkRegex = /(http:\/\/|https:\/\/|discord\.gg\/)/i;
   const ytOk = /youtube\.com|youtu\.be/i;
   if (linkRegex.test(content) && !ytOk.test(content) && !content.startsWith('!EU')) {
@@ -105,16 +109,67 @@ client.on('messageCreate', async (msg) => {
     const log = await client.channels.fetch(logChannels.botActivity);
     log?.send(`🚫 Blocked suspicious link from ${msg.author.tag}: \`${content}\``);
   }
+
+  // MUSIC: !play <song>
+  if (msg.content.startsWith('!play')) {
+    const query = msg.content.slice(5).trim();
+    if (!query) return msg.reply('❌ Please provide a song name or link.');
+
+    const vc = msg.member.voice.channel;
+    if (!vc) return msg.reply('❌ Join a voice channel first.');
+
+    try {
+      const result = await playdl.search(query, { limit: 1 });
+      const video = result[0];
+      const stream = await playdl.stream(video.url);
+
+      const resource = createAudioResource(stream.stream, { inputType: stream.type });
+      const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } });
+      player.play(resource);
+
+      const connection = joinVoiceChannel({
+        channelId: vc.id,
+        guildId: vc.guild.id,
+        adapterCreator: vc.guild.voiceAdapterCreator
+      });
+
+      connection.subscribe(player);
+      msg.channel.send(`🎶 Now Playing: **${video.title}**`);
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        connection.destroy();
+      });
+    } catch (err) {
+      console.error(err);
+      msg.reply('❌ Failed to play song.');
+    }
+  }
+
+  // MUSIC: !pause
+  if (msg.content === '!pause') {
+    const connection = getVoiceConnection(msg.guild.id);
+    if (!connection) return msg.reply('❌ Not connected to any VC.');
+    const player = connection.state.subscription?.player;
+    player?.pause();
+    msg.channel.send('⏸️ Paused.');
+  }
+
+  // MUSIC: !resume
+  if (msg.content === '!resume') {
+    const connection = getVoiceConnection(msg.guild.id);
+    if (!connection) return msg.reply('❌ Not connected to any VC.');
+    const player = connection.state.subscription?.player;
+    player?.unpause();
+    msg.channel.send('▶️ Resumed.');
+  }
 });
 
-// Deleted Message Logger
 client.on('messageDelete', async (message) => {
   if (message.partial || message.author?.bot) return;
   const log = await client.channels.fetch(logChannels.deletedMsg);
   log?.send(`🗑️ Message deleted from <@${message.author.id}> in <#${message.channel.id}>: ${message.content}`);
 });
 
-// VC Join / Leave / Drag Logs
 client.on('voiceStateUpdate', (oldState, newState) => {
   const user = newState.member?.user || oldState.member?.user;
   if (!user) return;
@@ -130,7 +185,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
   }
 });
 
-// Role Add/Remove Logs
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const added = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
   const removed = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
@@ -139,5 +193,4 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   removed.forEach(role => log?.send(`❌ <@${newMember.id}> was **removed** role: \`${role.name}\``));
 });
 
-// Login
 client.login(process.env.TOKEN);
